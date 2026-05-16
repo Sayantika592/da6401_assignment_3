@@ -472,67 +472,138 @@ class Transformer(nn.Module):
         d_ff           (int)  : FFN inner dimensionality (default 2048).
         dropout        (float): Dropout probability (default 0.1).
     """
+    GDRIVE_FILE_ID   = "1mt0mm2dRpv0LXAa4Ze702CprfYydQS9e"
+    CHECKPOINT_NAME  = "best_model.pt"
+
 
     def __init__(
         self,
-        src_vocab_size: int,
-        tgt_vocab_size: int,
-        d_model:   int   = 512,
-        N:         int   = 6,
-        num_heads: int   = 8,
-        d_ff:      int   = 2048,
-        dropout:   float = 0.1,
-        checkpoint_path: str = None,
+        d_model:           int   = 256,
+        N:                 int   = 3,
+        num_heads:         int   = 8,
+        d_ff:              int   = 1024,
+        dropout:           float = 0.1,
+        freq_threshold:    int   = 2,
+        use_scaling:       bool  = True,         # [2.2]
+        pos_encoding_type: str   = "sinusoidal", # [2.4]
+        # Set to False during training to skip gdown + vocab build
+        load_weights:      bool  = True,
     ) -> None:
         super().__init__()
 
-        # Store config for checkpoint saving / reconstruction
+
+        # ── Store config ──
+        self.d_model           = d_model
+        self.N                 = N
+        self.num_heads         = num_heads
+        self.d_ff              = d_ff
+        self.dropout_rate      = dropout
+        self.use_scaling       = use_scaling
+        self.pos_encoding_type = pos_encoding_type
+        self.pad_idx           = 1   # <pad> is always index 1
+ 
+        # ── Step 1: Load spacy tokenizers (inside __init__) ───────────
+        import spacy
+        try:
+            self._spacy_de = spacy.load("de_core_news_sm")
+        except OSError:
+            os.system("python -m spacy download de_core_news_sm")
+            self._spacy_de = spacy.load("de_core_news_sm")
+        try:
+            self._spacy_en = spacy.load("en_core_web_sm")
+        except OSError:
+            os.system("python -m spacy download en_core_web_sm")
+            self._spacy_en = spacy.load("en_core_web_sm")
+ 
+        # ── Step 2: Build vocab from Multi30k (inside __init__) ───────
+        self.src_vocab, self.tgt_vocab = self._build_vocab(freq_threshold)
+        self.src_itos = {v: k for k, v in self.src_vocab.items()}
+        self.tgt_itos = {v: k for k, v in self.tgt_vocab.items()}
+ 
+        src_vocab_size = len(self.src_vocab)
+        tgt_vocab_size = len(self.tgt_vocab)
         self.src_vocab_size = src_vocab_size
         self.tgt_vocab_size = tgt_vocab_size
-        self.d_model = d_model
-        self.N = N
-        self.num_heads = num_heads
-        self.d_ff = d_ff
-        self.dropout_rate = dropout
-
-        # ── Embeddings ──
+ 
+        # ── Step 3: Build architecture ────────────────────────────────
         self.src_embedding = nn.Embedding(src_vocab_size, d_model)
         self.tgt_embedding = nn.Embedding(tgt_vocab_size, d_model)
-        self.pos_encoding = PositionalEncoding(d_model, dropout)
-
-        # ── Encoder stack ──
-        encoder_layer = EncoderLayer(d_model, num_heads, d_ff, dropout)
-        self.encoder = Encoder(encoder_layer, N)
-
-        # ── Decoder stack ──
-        decoder_layer = DecoderLayer(d_model, num_heads, d_ff, dropout)
-        self.decoder = Decoder(decoder_layer, N)
-
-        # ── Output projection to vocabulary ──
+ 
+        if pos_encoding_type == "learned":
+            self.pos_encoding = LearnedPositionalEncoding(d_model, dropout)
+        else:
+            self.pos_encoding = PositionalEncoding(d_model, dropout)
+ 
+        encoder_layer      = EncoderLayer(d_model, num_heads, d_ff, dropout,
+                                          use_scaling=use_scaling)
+        self.encoder       = Encoder(encoder_layer, N)
+ 
+        decoder_layer      = DecoderLayer(d_model, num_heads, d_ff, dropout,
+                                          use_scaling=use_scaling)
+        self.decoder       = Decoder(decoder_layer, N)
+ 
         self.output_projection = nn.Linear(d_model, tgt_vocab_size)
-
-        # ── Xavier initialisation ──
         self._init_parameters()
-
-        # ── Optional: load weights from Google Drive checkpoint ──
-        if checkpoint_path is not None:
-            if not os.path.exists(checkpoint_path):
-                gdown.download(id="<.pth drive id>", output=checkpoint_path, quiet=False)
-            state = torch.load(checkpoint_path, map_location="cpu")
+ 
+        # ── Step 4: Download weights from Drive and load (inside __init__) ──
+        if load_weights:
+            if not os.path.exists(self.CHECKPOINT_NAME):
+                print(f"Downloading weights from Google Drive ({self.GDRIVE_FILE_ID})...")
+                gdown.download(
+                    id=self.GDRIVE_FILE_ID,
+                    output=self.CHECKPOINT_NAME,
+                    quiet=False,
+                )
+            print(f"Loading weights from {self.CHECKPOINT_NAME}...")
+            state = torch.load(self.CHECKPOINT_NAME, map_location="cpu")
             self.load_state_dict(state["model_state_dict"])
-
-        # These will be set externally for infer() to work
-        self.src_vocab = None  # dict: token → idx
-        self.tgt_vocab = None  # dict: token → idx
-        self.pad_idx = 1
-
+            print("Weights loaded successfully.")
+ 
+    # ── Vocab builder ──────────────────────────────────────────────────
+    def _build_vocab(self, freq_threshold: int = 2):
+        """
+        Loads Multi30k training split, tokenizes with spacy,
+        and builds src (DE) and tgt (EN) vocabularies.
+        Special tokens: <unk>=0, <pad>=1, <sos>=2, <eos>=3
+        """
+        from collections import Counter
+        from datasets import load_dataset
+ 
+        SPECIALS  = ["<unk>", "<pad>", "<sos>", "<eos>"]
+        data      = load_dataset("bentrevett/multi30k", split="train")
+ 
+        src_counter = Counter()
+        tgt_counter = Counter()
+        for item in data:
+            src_counter.update(
+                t.text.lower() for t in self._spacy_de.tokenizer(item["de"])
+            )
+            tgt_counter.update(
+                t.text.lower() for t in self._spacy_en.tokenizer(item["en"])
+            )
+ 
+        def build(counter):
+            vocab = {tok: idx for idx, tok in enumerate(SPECIALS)}
+            idx   = len(SPECIALS)
+            for word, count in counter.items():
+                if count >= freq_threshold:
+                    vocab[word] = idx
+                    idx += 1
+            return vocab
+ 
+        return build(src_counter), build(tgt_counter)
+ 
+    # ── Helpers ───────────────────────────────────────────────────────
     def _init_parameters(self):
-        """Xavier uniform initialisation for faster convergence."""
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
+ 
+    def _tokenize_de(self, text: str):
+        return [tok.text.lower() for tok in self._spacy_de.tokenizer(text)]
 
-    # ── AUTOGRADER HOOKS ── keep these signatures exactly ─────────────
+
+    # ── AUTOGRADER HOOKS ── keep these signatures exactly ──────────────
 
     def encode(
         self,

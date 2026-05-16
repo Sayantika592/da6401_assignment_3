@@ -504,15 +504,16 @@ class Transformer(nn.Module):
  
         # ── Step 1: Load spacy tokenizers (inside __init__) ───────────
         import spacy
+        from spacy.cli import download
         try:
             self._spacy_de = spacy.load("de_core_news_sm")
         except OSError:
-            os.system("python -m spacy download de_core_news_sm")
+            download("de_core_news_sm")
             self._spacy_de = spacy.load("de_core_news_sm")
         try:
             self._spacy_en = spacy.load("en_core_web_sm")
         except OSError:
-            os.system("python -m spacy download en_core_web_sm")
+            download("en_core_web_sm")
             self._spacy_en = spacy.load("en_core_web_sm")
  
         # ── Step 2: Build vocab from Multi30k (inside __init__) ───────
@@ -687,10 +688,11 @@ class Transformer(nn.Module):
 
         # Tokenize source sentence using spacy
         import spacy
+        from spacy.cli import download
         try:
             spacy_de = spacy.load("de_core_news_sm")
         except OSError:
-            os.system("python -m spacy download de_core_news_sm")
+            download("de_core_news_sm")
             spacy_de = spacy.load("de_core_news_sm")
 
         tokens = [tok.text.lower() for tok in spacy_de.tokenizer(src_sentence)]

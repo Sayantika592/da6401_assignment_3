@@ -352,13 +352,12 @@ def save_checkpoint(
         'optimizer_state_dict': optimizer.state_dict(),
         'scheduler_state_dict': scheduler.state_dict(),
         'model_config': {
-            'src_vocab_size': model.src_vocab_size,
-            'tgt_vocab_size': model.tgt_vocab_size,
             'd_model': model.d_model,
             'N': model.N,
             'num_heads': model.num_heads,
             'd_ff': model.d_ff,
             'dropout': model.dropout_rate,
+            'load_weights': False,
         },
     }, path)
 
@@ -461,13 +460,13 @@ def run_training_experiment() -> None:
 
     # 4. Instantiate Transformer
     model = Transformer(
-        src_vocab_size=src_vocab_size,
-        tgt_vocab_size=tgt_vocab_size,
         d_model=config.d_model,
         N=config.N,
         num_heads=config.num_heads,
         d_ff=config.d_ff,
         dropout=config.dropout,
+        freq_threshold=config.freq_threshold,
+        load_weights=False,
     ).to(device)
 
     # Attach vocabs for infer()

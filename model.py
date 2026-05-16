@@ -535,12 +535,10 @@ class Transformer(nn.Module):
         else:
             self.pos_encoding = PositionalEncoding(d_model, dropout)
  
-        encoder_layer      = EncoderLayer(d_model, num_heads, d_ff, dropout,
-                                          use_scaling=use_scaling)
+        encoder_layer      = EncoderLayer(d_model, num_heads, d_ff, dropout)
         self.encoder       = Encoder(encoder_layer, N)
  
-        decoder_layer      = DecoderLayer(d_model, num_heads, d_ff, dropout,
-                                          use_scaling=use_scaling)
+        decoder_layer      = DecoderLayer(d_model, num_heads, d_ff, dropout)
         self.decoder       = Decoder(decoder_layer, N)
  
         self.output_projection = nn.Linear(d_model, tgt_vocab_size)

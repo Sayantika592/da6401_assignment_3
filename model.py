@@ -492,7 +492,7 @@ class Transformer(nn.Module):
         super().__init__()
 
 
-        # ── Store config ──
+        # Store config
         self.d_model           = d_model
         self.N                 = N
         self.num_heads         = num_heads
@@ -502,7 +502,7 @@ class Transformer(nn.Module):
         self.pos_encoding_type = pos_encoding_type
         self.pad_idx           = 1   # <pad> is always index 1
  
-        # ── Step 1: Load spacy tokenizers (inside __init__) ───────────
+        # Step 1: Load spacy tokenizers (inside __init__)
         import spacy
         from spacy.cli import download
         try:
@@ -516,7 +516,7 @@ class Transformer(nn.Module):
             download("en_core_web_sm")
             self._spacy_en = spacy.load("en_core_web_sm")
  
-        # ── Step 2: Build vocab from Multi30k (inside __init__) ───────
+        # Step 2: Build vocab from Multi30k (inside __init__)
         self.src_vocab, self.tgt_vocab = self._build_vocab(freq_threshold)
         self.src_itos = {v: k for k, v in self.src_vocab.items()}
         self.tgt_itos = {v: k for k, v in self.tgt_vocab.items()}
@@ -526,7 +526,7 @@ class Transformer(nn.Module):
         self.src_vocab_size = src_vocab_size
         self.tgt_vocab_size = tgt_vocab_size
  
-        # ── Step 3: Build architecture ────────────────────────────────
+        # Step 3: Build architecture
         self.src_embedding = nn.Embedding(src_vocab_size, d_model)
         self.tgt_embedding = nn.Embedding(tgt_vocab_size, d_model)
  
@@ -544,7 +544,7 @@ class Transformer(nn.Module):
         self.output_projection = nn.Linear(d_model, tgt_vocab_size)
         self._init_parameters()
  
-        # ── Step 4: Download weights from Drive and load (inside __init__) ──
+        # Step 4: Download weights from Drive and load (inside __init__)
         if load_weights:
             if not os.path.exists(self.CHECKPOINT_NAME):
                 print(f"Downloading weights from Google Drive ({self.GDRIVE_FILE_ID})...")
@@ -558,7 +558,7 @@ class Transformer(nn.Module):
             self.load_state_dict(state["model_state_dict"])
             print("Weights loaded successfully.")
  
-    # ── Vocab builder ──────────────────────────────────────────────────
+    # Vocab builder
     def _build_vocab(self, freq_threshold: int = 2):
         """
         Loads Multi30k training split, tokenizes with spacy,
@@ -592,7 +592,7 @@ class Transformer(nn.Module):
  
         return build(src_counter), build(tgt_counter)
  
-    # ── Helpers ───────────────────────────────────────────────────────
+    # Helpers 
     def _init_parameters(self):
         for p in self.parameters():
             if p.dim() > 1:

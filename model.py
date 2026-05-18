@@ -472,7 +472,7 @@ class Transformer(nn.Module):
         d_ff           (int)  : FFN inner dimensionality (default 2048).
         dropout        (float): Dropout probability (default 0.1).
     """
-    GDRIVE_FILE_ID   = "1_YWgUJ_FGUNePBmIZ3jq91aZ2u8uOzEO"
+    GDRIVE_FILE_ID   = "1mt0mm2dRpv0LXAa4Ze702CprfYydQS9e"
     CHECKPOINT_NAME  = "best_model.pt"
 
 

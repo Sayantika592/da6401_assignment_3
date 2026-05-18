@@ -425,7 +425,7 @@ def run_training_experiment() -> None:
     from dataset import prepare_data, Multi30kDataset
     from lr_scheduler import NoamScheduler
 
-    # ── Hyperparameters ──
+    # Hyperparameters
     config = {
         "d_model": 256,
         "N": 3,

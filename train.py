@@ -248,9 +248,7 @@ def evaluate_bleu(
         bleu_score : Corpus-level BLEU (float, range 0–100).
 
     """
-    import evaluate as eval_lib
-
-    bleu_metric = eval_lib.load("bleu")
+    from bleu import list_bleu
 
     model.eval()
     predictions = []
@@ -262,10 +260,8 @@ def evaluate_bleu(
 
     # Build idx→token mapping
     if isinstance(tgt_vocab, dict):
-        # tgt_vocab is token→idx, need to invert
         idx_to_token = {v: k for k, v in tgt_vocab.items()}
     else:
-        # Assume it has an itos attribute or is already idx→token
         idx_to_token = tgt_vocab.itos if hasattr(tgt_vocab, 'itos') else tgt_vocab
 
     special_tokens = {"<pad>", "<sos>", "<bos>", "<eos>", "<unk>"}
@@ -273,44 +269,54 @@ def evaluate_bleu(
     for src, tgt in test_dataloader:
         src = src.to(device)
 
-        # Process each sentence in the batch individually
         for i in range(src.size(0)):
-            src_i = src[i].unsqueeze(0)  # (1, src_len)
+            src_i = src[i].unsqueeze(0)
             src_mask = make_src_mask(src_i, pad_idx).to(device)
 
             # Greedy decode
             pred_tokens = greedy_decode(
-                model, src_i, src_mask, max_len,
-                start_symbol=sos_idx, end_symbol=eos_idx, device=device,
+                model,
+                src_i,
+                src_mask,
+                max_len,
+                start_symbol=sos_idx,
+                end_symbol=eos_idx,
+                device=device,
             )
 
-            # Convert prediction to words
+            # Prediction tokens
             pred_indices = pred_tokens[0].cpu().tolist()
             pred_words = []
-            for idx in pred_indices[1:]:  # skip SOS
+
+            for idx in pred_indices[1:]:
                 if idx == eos_idx:
                     break
+
                 token = idx_to_token.get(idx, "<unk>")
+
                 if token not in special_tokens:
                     pred_words.append(token)
 
-            # Convert reference to words
+            # Reference tokens
             ref_indices = tgt[i].cpu().tolist()
             ref_words = []
-            for idx in ref_indices[1:]:  # skip SOS
+
+            for idx in ref_indices[1:]:
                 if idx == eos_idx:
                     break
+
                 if idx != pad_idx:
                     token = idx_to_token.get(idx, "<unk>")
+
                     if token not in special_tokens:
                         ref_words.append(token)
 
-            predictions.append(" ".join(pred_words))
-            references.append([" ".join(ref_words)])
+            predictions.append(pred_words)
+            references.append(ref_words)
 
-    results = bleu_metric.compute(predictions=predictions, references=references)
-    return results["bleu"] * 100  # range 0–100
+    bleu_score = list_bleu(references, predictions)
 
+    return bleu_score * 100
 
 # ══════════════════════════════════════════════════════════════════════
 # ❺  CHECKPOINT UTILITIES  (autograder loads your model from disk)

@@ -6,5 +6,5 @@ wandb
 datasets
 spacy
 tqdm
-evaluate
+bleu
 gdown
